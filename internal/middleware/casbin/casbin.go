@@ -25,7 +25,7 @@ func InitEnforcer() {
 	}
 	var err1 error
 
-	Enfocer, err1 = casbin.NewEnforcer("D:/Golang/chat/middleware/casbin/model.conf", a)
+	Enfocer, err1 = casbin.NewEnforcer("D:/Golang/chat/internal/middleware/casbin/model.conf", a)
 	fmt.Println("---------------------------")
 	if err1 != nil {
 		fmt.Println("----------------")

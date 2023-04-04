@@ -97,6 +97,7 @@ func (r *DeleteRoomMQ) EscGroup(msg <-chan amqp.Delivery) {
 		//roomid,uid
 
 		err := model.EscRoom(params[0], params[1])
+		// redis.RdbRoomUserList.LRem(redis.Ctx,params[0],)
 		if err != nil {
 			log.Println("deletemq error :", err)
 		}

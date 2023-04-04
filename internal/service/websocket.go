@@ -56,30 +56,41 @@ func Sendmsg(c *gin.Context) {
 }
 func (c *Client) ReadMsg() {
 	defer func() {
-		_ = c.Socket.Close()
+		Manager.Unregister <- c
 	}()
 	for {
 		ms := new(MsgDTO)
 		err2 := c.Socket.ReadJSON(ms)
 		if err2 != nil {
-			panic(err2)
-		}
-		//TODO:判断用户是否属于消息体房间
-		ok := model.JudgeIsInROOM(c.ID, ms.RoomID)
-		if !ok {
-			fmt.Println("user is no exist in the room")
+			log.Println("json match error")
 			return
 		}
-		Manager.BroadCast <- &BroadCast{
-			Client:  c,
-			Message: []byte(ms.Message.(string)),
-			RoomID:  ms.RoomID,
+		//TODO:判断用户是否属于消息体房间
+		if ms.RoomID != "38324" {
+			fmt.Println("mms:", ms)
+			ok := model.JudgeIsInROOM(c.ID, ms.RoomID)
+			if !ok {
+				log.Println("user is no exist in the room")
+				continue
+			}
+			Manager.BroadCast <- &BroadCast{
+				Client:  c,
+				Message: []byte(ms.Message.(string)),
+				RoomID:  ms.RoomID,
+			}
+		} else {
+			Manager.BroadCastPublic <- &BroadCast{
+				Client:  c,
+				Message: []byte(ms.Message.(string)),
+				RoomID:  ms.RoomID,
+			}
 		}
+
 	}
 }
 func (c *Client) WriteMsg() {
 	defer func() {
-		_ = c.Socket.Close()
+		Manager.Unregister <- c
 	}() //房间内广播消息
 	for {
 		select { //监听send管道

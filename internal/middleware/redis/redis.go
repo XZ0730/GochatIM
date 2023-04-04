@@ -11,6 +11,7 @@ import (
 // 进去聊天室获取历史记录，page=1时首先先去redis中查询，如果命中则返回前十条，
 var RdbRoomMessageList *redis.Client
 var RdbVistorList *redis.Client
+var RdbRoomUserList *redis.Client
 var Ctx = context.Background()
 
 func InitRedis() {
@@ -23,5 +24,10 @@ func InitRedis() {
 		Addr:     "localhost:6379",
 		Password: "",
 		DB:       1,
+	})
+	RdbRoomUserList = redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       2,
 	})
 }
