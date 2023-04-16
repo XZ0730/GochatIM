@@ -6,6 +6,7 @@ import (
 	"chat/internal/model"
 	"chat/internal/vo"
 	"chat/util"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -33,11 +34,13 @@ func GetHistoryList(c *gin.Context) {
 	}
 	claims, _ := util.ParseToken(c.GetHeader("token"))
 	_, err3 := model.GetURinfo(claims.ID, rid)
+	fmt.Println(claims.ID, ":", rid)
 	if err3 != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"status": 325,
 			"msg":    err3.Error(),
 		})
+		return
 	}
 	pageStr, ok1 := c.GetQuery("page")
 	if !ok1 {
@@ -49,6 +52,7 @@ func GetHistoryList(c *gin.Context) {
 			"status": 323,
 			"msg":    err.Error(),
 		})
+		return
 	}
 	skip := (page - 1) * pageSize
 	//TODO:查询某个房间的消息记录//默认最近的3条
@@ -66,12 +70,15 @@ func GetHistoryList(c *gin.Context) {
 				"status": 324,
 				"msg":    err2.Error(),
 			})
+			return
 		}
 		c.JSON(http.StatusOK, vo.BuildList(mbs, len(mbs), 0))
 		//一百条以后的数据通过数据库查找
 	}
 	//返回最新的一百条-->一百条以上或者是redis数据过期，就从数据库中查找
 	//首先查看redis中能否命中从redis中读取
+	Lock.Lock()
+	defer Lock.Unlock()
 	if cnt, err := redis.RdbRoomMessageList.Exists(redis.Ctx, rid).Result(); cnt > 0 {
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{
@@ -87,16 +94,22 @@ func GetHistoryList(c *gin.Context) {
 				"err":    err.Error(),
 			})
 		}
-		c.JSON(http.StatusOK, vo.BuildList(msgs, len(msgs), 0))
-
+		msgreflect := &model.Meesage_Basic{}
+		msgreflects := make([]model.Meesage_Basic, 0)
+		for _, msg := range msgs {
+			bmsg := []byte(msg)
+			json.Unmarshal(bmsg, msgreflect)
+			msgreflects = append(msgreflects, *msgreflect)
+		}
+		c.JSON(http.StatusOK, vo.BuildList(msgreflects, len(msgreflects), 0))
 	} else {
-		if _, err := redis.RdbRoomMessageList.LPush(redis.Ctx, rid, -1).Result(); err != nil {
-			redis.RdbRoomMessageList.Del(redis.Ctx, rid)
-			c.JSON(http.StatusOK, gin.H{
-				"status": 323,
-				"err":    err.Error(),
-			})
-		} //防止脏读
+		// if _, err := redis.RdbRoomMessageList.LPush(redis.Ctx, rid, -1).Result(); err != nil {
+		// 	redis.RdbRoomMessageList.Del(redis.Ctx, rid)
+		// 	c.JSON(http.StatusOK, gin.H{
+		// 		"status": 323,
+		// 		"err":    err.Error(),
+		// 	})
+		// } //防止脏读
 		var pagesize int64 = 100
 		var skipto int64 = 0
 		mbs, err := model.GetMsgByRid(rid, &pagesize, &skipto)
@@ -106,9 +119,12 @@ func GetHistoryList(c *gin.Context) {
 				"err":    err.Error(),
 			})
 		}
+
 		for _, msg := range mbs {
-			redis.RdbRoomMessageList.LPush(redis.Ctx, rid, msg.Data)
-		}
+			bmsg, _ := json.Marshal(msg)
+			redis.RdbRoomMessageList.LPush(redis.Ctx, rid, bmsg)
+		} //优化-->用zset
+
 		_, err2 := redis.RdbRoomMessageList.Expire(redis.Ctx, rid,
 			time.Duration(time.Now().Day()*30)*time.Second).
 			Result()

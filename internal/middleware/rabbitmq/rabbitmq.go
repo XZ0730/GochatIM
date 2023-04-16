@@ -1,8 +1,7 @@
 package rabbitmq
 
 import (
-	"fmt"
-	"log"
+	"chat/logs"
 
 	"github.com/streadway/amqp"
 )
@@ -23,17 +22,12 @@ func InitRabbitMQ() {
 		mqurl: MQURL,
 	}
 	dial, err := amqp.Dial(Rmq.mqurl)
-	Rmq.failOnErr(err, "创建连接失败")
+	if err != nil {
+		logs.ReLogrusObj(logs.Path).Error("rabbitmq init err:", err)
+		return
+	}
 	Rmq.conn = dial
 
-}
-
-// 连接出错时，输出错误信息。
-func (r *RabbitMQ) failOnErr(err error, message string) {
-	if err != nil {
-		log.Fatalf("%s:%s\n", err, message)
-		panic(fmt.Sprintf("%s:%s\n", err, message))
-	}
 }
 
 // 关闭mq通道和mq的连接。

@@ -100,6 +100,8 @@ type job struct {
 	Userid  string
 }
 
+var Lock sync.RWMutex
+
 func (manager *ClientManager) Start() {
 	for {
 		log.Println("<---监听管道通信--->")
@@ -183,6 +185,14 @@ func (manager *ClientManager) Start() {
 				wait.Add(1)
 				pool.Invoke(job)
 			}
+			for i := 0; i < 100; i++ {
+				Lock.Lock()
+				err := redis.RdbRoomMessageList.LPop(redis.Ctx, broadcast.RoomID).Err()
+				if err != nil {
+					break
+				} //每次发送消息清除缓存
+			}
+			Lock.Unlock()
 			wait.Wait()
 			log.Println("----time", time.Now().Unix())
 		case broadcast := <-Manager.BroadCastPublic:

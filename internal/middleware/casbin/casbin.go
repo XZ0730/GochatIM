@@ -2,6 +2,7 @@ package casbin
 
 import (
 	"chat/internal/middleware/redis"
+	"chat/logs"
 	"chat/util"
 	"fmt"
 	"log"
@@ -18,7 +19,7 @@ import (
 var Enfocer *casbin.Enforcer
 
 func InitEnforcer() {
-	a, err := gormadapter.NewAdapter("mysql", "root:root@tcp(1.12.54.69:3307)/casbin", true)
+	a, err := gormadapter.NewAdapter("mysql", "root:root@tcp(43.136.122.18:3307)/casbin", true)
 	if err != nil {
 		fmt.Println("----")
 		panic(err)
@@ -26,9 +27,9 @@ func InitEnforcer() {
 	var err1 error
 
 	Enfocer, err1 = casbin.NewEnforcer("D:/Golang/chat/internal/middleware/casbin/model.conf", a)
-	fmt.Println("---------------------------")
+	// fmt.Println("---------------------------")
 	if err1 != nil {
-		fmt.Println("----------------")
+		// fmt.Println("----------------")
 		panic(err1)
 	}
 	// sub := "zhangsan"
@@ -62,24 +63,26 @@ func CheckAuth() gin.HandlerFunc {
 			//将用户的addr 作为key value为用户的uuid
 			var err error
 
-			id, err = redis.RdbVistorList.Get(redis.Ctx, c.Request.RemoteAddr).Result()
-			fmt.Println("addr:", c.Request.RemoteAddr)
+			params := strings.Split(c.Request.RemoteAddr, ":")
+			// fmt.Println("params", params)
+			// c.IsWebsocket()
+			id, err = redis.RdbVistorList.Get(redis.Ctx, params[0]).Result()
 			if err != nil { //redis中没有--就set
 				id = util.UUID()
-				//缓存有效期，一小时
-				err2 := redis.RdbVistorList.Set(redis.Ctx, c.Request.RemoteAddr, id, time.Duration(time.Now().Hour())*time.Second).Err()
+				//缓存有效期，三个月
+				err2 := redis.RdbVistorList.Set(redis.Ctx, params[0], id, time.Duration(time.Now().Month()*3)*time.Second).Err()
 				if err2 != nil {
 					log.Println("redis set error:", err2)
 				}
 				fmt.Println(id)
 				_, err3 := Enfocer.AddGroupingPolicy(id, "vistor")
 				if err3 != nil {
-					log.Println("vistor group add err:", err)
+					log.Println("vistor group add err1:", err)
 				}
 			} else { //redis中存在kv，直接取出构造用户角色映射关系
 				b2, err2 := Enfocer.AddGroupingPolicy(id, "vistor")
 				if err2 != nil || !b2 {
-					log.Println("vistor group add err:", err)
+					log.Println("vistor group add err2:", err2)
 				}
 			}
 
@@ -103,14 +106,14 @@ func CheckAuth() gin.HandlerFunc {
 		if strings.HasPrefix(obj_uri.Path, "/u/room") {
 			path = "/u/room"
 		}
-
+		fmt.Println(sub, ":", path, ":", act)
 		b, _ := Enfocer.Enforce(sub, path, act)
 		if b {
-			log.Println("[user]", sub, "--[obj]", obj_uri, "--[act]", act, "------[timestramp]", time.Now().Format("2006-05-04 15:02:01"))
+			logs.ReLogrusObj(logs.Path).Debug("[user]", sub, "--[obj]", obj_uri, "--[act]", act, "------[timestramp]", time.Now().Format("2006-05-04 15:02:01"))
 			c.Next()
 			return
 		} else {
-			log.Println("[autheicaton lose user]", sub, "--[obj]", obj_uri, "--[act]", act, "------[timestramp]", time.Now().Format("2006-05-04 15:02:01"))
+			logs.ReLogrusObj(logs.Path).Debug("[autheicaton lose user]", sub, "--[obj]", obj_uri, "--[act]", act, "------[timestramp]", time.Now().Format("2006-05-04 15:02:01"))
 			c.Abort()
 			return
 		}

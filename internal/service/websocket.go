@@ -3,9 +3,8 @@ package service
 import (
 	"chat/internal/middleware/redis"
 	"chat/internal/model"
+	"chat/logs"
 	"chat/util"
-	"fmt"
-	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -18,14 +17,15 @@ type MsgDTO struct {
 }
 
 func Sendmsg(c *gin.Context) {
-	fmt.Println("-----------------------")
+	// fmt.Println("-----------------------")
 	conn, err := (&websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
 			return true
 		},
 	}).Upgrade(c.Writer, c.Request, nil) //ws升级
-	fmt.Println("=============================")
+	// fmt.Println("=============================")
 	if err != nil {
+		logs.ReLogrusObj(logs.Path).Warn("ws异常")
 		c.JSON(http.StatusOK, gin.H{
 			"code": -1,
 			"msg":  "ws异常",
@@ -34,12 +34,14 @@ func Sendmsg(c *gin.Context) {
 	id := ""
 	judge := false
 	claims, _ := util.ParseToken(c.GetHeader("token"))
+	// params := strings.Split(c.Request.RemoteAddr, ":")
 	if claims == nil {
 		judge = true //判断是不是游客
-		id, err = redis.RdbVistorList.Get(c, c.Request.RemoteAddr).Result()
+		id, err = redis.RdbVistorList.Get(c, c.RemoteIP()).Result()
 		if err != nil {
-			log.Println("redis get error:", err)
+			logs.ReLogrusObj(logs.Path).Debug("redis get error:", err)
 		}
+		// fmt.Println("idone:", id)
 	} else {
 		id = claims.ID
 	}
@@ -49,7 +51,7 @@ func Sendmsg(c *gin.Context) {
 		Send:   make(chan []byte),
 		Judge:  judge,
 	}
-	fmt.Println("-------------------------")
+	// fmt.Println("-------------------------")
 	Manager.Register <- client
 	go client.ReadMsg()
 	go client.WriteMsg()
@@ -61,16 +63,17 @@ func (c *Client) ReadMsg() {
 	for {
 		ms := new(MsgDTO)
 		err2 := c.Socket.ReadJSON(ms)
+		logs.ReLogrusObj(logs.Path).Debug("here send a msg")
 		if err2 != nil {
-			log.Println("json match error")
+			logs.ReLogrusObj(logs.Path).Debug("json match error")
 			return
 		}
 		//TODO:判断用户是否属于消息体房间
 		if ms.RoomID != "38324" {
-			fmt.Println("mms:", ms)
+			// fmt.Println("mms:", ms)
 			ok := model.JudgeIsInROOM(c.ID, ms.RoomID)
 			if !ok {
-				log.Println("user is no exist in the room")
+				logs.ReLogrusObj(logs.Path).Info("user is no exist in the room")
 				continue
 			}
 			Manager.BroadCast <- &BroadCast{

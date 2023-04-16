@@ -5,11 +5,13 @@ import (
 	rabbitmq "chat/internal/middleware/rabbitmq"
 	"chat/internal/model"
 	"chat/internal/vo"
+	"chat/logs"
 	"chat/util"
 	"fmt"
 	"log"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/panjf2000/ants"
@@ -26,6 +28,7 @@ type TestXH struct {
 
 var IDpool *ants.PoolWithFunc
 var workderc *util.Worker
+var wait2 sync.WaitGroup
 
 func init() {
 	workderc, _ = util.NewWorker(int64(1))
@@ -37,6 +40,7 @@ func init() {
 		}
 		id := workderc.GetId()
 		request.Result <- id
+		wg.Done()
 	})
 	if err != nil {
 		log.Println("ants error:", err)
@@ -60,12 +64,15 @@ func (service *UserService) Register() vo.Response {
 	pool, _ := ants.NewPoolWithFunc(300, func(userInfo interface{}) { //执行数据库插入
 		user, ok := userInfo.(*model.User_Basic)
 		if !ok {
+			logs.ReLogrusObj(logs.Path).Debug("User_Basic assert fail")
+			wait2.Done()
 			return
 		}
 		if user != nil { //传递数据添加
 			addStatus := model.Create_User(user)
 			addChant <- addStatus
 		}
+		wait2.Done()
 	})
 	request := &TestXH{Result: make(chan int64)}
 	//snowflake
@@ -76,11 +83,16 @@ func (service *UserService) Register() vo.Response {
 		Create_At: time.Now().Unix(),
 		Update_At: time.Now().Unix(),
 	}
+	wait2.Add(1)
 	IDpool.Invoke(request)
+
 	uid := <-request.Result
 	fmt.Println("uid:", uid)
 	ub.ID = strconv.FormatInt(uid, 10)
+
+	wg.Add(1)
 	pool.Invoke(ub)
+
 	addsta := <-addChant
 	if !addsta {
 		log.Println("注册失败")
@@ -92,15 +104,16 @@ func (service *UserService) Register() vo.Response {
 	msg := ub.ID + "," + "38324" + "," + "2"
 	rabbitmq.NewAddRoomMQ("groupQue").Publish(msg) //用户注册加入公共频道
 	//加入游客策略---加入用户策略
-	ok, err2 := casbin.Enfocer.AddGroupingPolicy(ub.ID, "vistor")
+	_, err2 := casbin.Enfocer.AddGroupingPolicy(ub.ID, "vistor")
 	if err2 != nil {
-		log.Println("[用户", ub.ID, "]", "加入游客策略失败")
+		logs.ReLogrusObj(logs.Path).Debug("[用户", ub.ID, "]", "加入游客策略失败")
 	}
-	fmt.Println("ok:", ok)
+
 	_, err := casbin.Enfocer.AddGroupingPolicy(ub.ID, "user")
 	if err != nil {
-		log.Println("[用户", ub.ID, "]", "加入用户策略失败")
+		logs.ReLogrusObj(logs.Path).Debug("[用户", ub.ID, "]", "加入用户策略失败")
 	}
+	wait2.Wait()
 	return vo.Response{
 		Status: 200,
 		Msg:    "ok",

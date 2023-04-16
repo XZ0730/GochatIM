@@ -2,7 +2,7 @@ package rabbitmq
 
 import (
 	"chat/internal/model"
-	"log"
+	"chat/logs"
 	"strings"
 	"time"
 
@@ -24,8 +24,11 @@ func NewAddRoomMQ(queueName string) *AddRoomMQ {
 	}
 
 	ch, err := addRoomMQ.conn.Channel()
+	if err != nil {
+		logs.ReLogrusObj(logs.Path).Warn("NewAddRoomMQ err:", err)
+		return nil
+	}
 	addRoomMQ.channel = ch
-	Rmq.failOnErr(err, "获取通道失败")
 	return addRoomMQ
 }
 
@@ -35,7 +38,7 @@ func (c *AddRoomMQ) Publish(message string) {
 	_, err := c.channel.QueueDeclare(
 		c.queueName,
 		//是否持久化
-		false,
+		true,
 		//是否为自动删除
 		false,
 		//是否具有排他性
@@ -46,9 +49,12 @@ func (c *AddRoomMQ) Publish(message string) {
 		nil,
 	)
 	if err != nil {
-		panic(err)
+		logs.ReLogrusObj(logs.Path).Warn("addRoomMQ publish error-->queueDeclare")
+		return
 	}
-
+	//json.marshal 可序列化结构体为二进制byte类型
+	//然后就可以通过消息队列进行传参，
+	//在消费者方面只需要通过unmarshal进行反序列化就可以得到结构体
 	err1 := c.channel.Publish(
 		c.exchange,
 		c.queueName,
@@ -59,7 +65,8 @@ func (c *AddRoomMQ) Publish(message string) {
 			Body:        []byte(message),
 		})
 	if err1 != nil {
-		panic(err)
+		logs.ReLogrusObj(logs.Path).Warn("addRoomMQ publish error-->chan publish")
+		return
 	}
 }
 
@@ -69,7 +76,8 @@ func (r *AddRoomMQ) Consumer() {
 	_, err := r.channel.QueueDeclare(r.queueName, false, false, false, false, nil)
 
 	if err != nil {
-		panic(err)
+		logs.ReLogrusObj(logs.Path).Warn("addRoomMQ publish error-->QueueDeclare")
+		return
 	}
 
 	//2、接收消息
@@ -88,7 +96,8 @@ func (r *AddRoomMQ) Consumer() {
 		nil,
 	)
 	if err != nil {
-		panic(err)
+		logs.ReLogrusObj(logs.Path).Warn("addRoomMQ publish error-->chan consume")
+		return
 	}
 
 	forever := make(chan bool)
@@ -123,7 +132,7 @@ func (r *AddRoomMQ) AddFriend(msg <-chan amqp.Delivery) {
 		params1 := strings.Split(name, "-")
 		err2 := model.CreatePrivateRoom(cr, params1[0], params1[1])
 		if err2 != nil {
-			log.Println("adroommq.go line 121 err2:", err2)
+			logs.ReLogrusObj(logs.Path).Warn("AddFriend Consume error-->Addfriend CreatePrivateRoom")
 		}
 	}
 }
@@ -141,7 +150,7 @@ func (r *AddRoomMQ) InsertToGroup(msg <-chan amqp.Delivery) {
 		}
 		err2 := model.CreateUserRoom(ur)
 		if err2 != nil {
-			log.Println("addroommq.go line 139 err2:", err2)
+			logs.ReLogrusObj(logs.Path).Warn("InsertToGroup consume error-->InsertToGroup CreateUserRoom")
 		}
 	}
 }

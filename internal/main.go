@@ -6,6 +6,7 @@ import (
 	redis "chat/internal/middleware/redis"
 	"chat/internal/router"
 	"chat/internal/service"
+	"chat/logs"
 )
 
 func main() {
@@ -16,5 +17,6 @@ func main() {
 	rabbitmq.InitDeleteRoomMQ()
 	redis.InitRedis()
 	casbin.InitEnforcer()
+	logs.InitLog()
 	e.Run(":3000")
 }

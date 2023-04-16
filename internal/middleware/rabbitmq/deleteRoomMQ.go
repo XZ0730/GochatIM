@@ -2,7 +2,7 @@ package rabbitmq
 
 import (
 	"chat/internal/model"
-	"log"
+	"chat/logs"
 	"strings"
 
 	"github.com/streadway/amqp"
@@ -23,7 +23,9 @@ func NewDeleteRoomMQ(queueName string) *DeleteRoomMQ {
 
 	ch, err := deleteRoomMQ.conn.Channel()
 	deleteRoomMQ.channel = ch
-	Rmq.failOnErr(err, "获取通道失败")
+	if err != nil {
+		logs.ReLogrusObj(logs.Path).Error("new deleteRoomMQ err:", err)
+	}
 	return deleteRoomMQ
 }
 func (c *DeleteRoomMQ) Publish(message string) {
@@ -42,7 +44,8 @@ func (c *DeleteRoomMQ) Publish(message string) {
 		nil,
 	)
 	if err != nil {
-		panic(err)
+		logs.ReLogrusObj(logs.Path).Warn("DeleteRoomMQ publish-->QueueDeclare err:", err)
+		return
 	}
 
 	err1 := c.channel.Publish(
@@ -55,7 +58,8 @@ func (c *DeleteRoomMQ) Publish(message string) {
 			Body:        []byte(message),
 		})
 	if err1 != nil {
-		panic(err)
+		logs.ReLogrusObj(logs.Path).Warn("DeleteRoomMQ publish-->Publish err:", err1)
+		return
 	}
 }
 func (r *DeleteRoomMQ) Consumer() {
@@ -63,7 +67,8 @@ func (r *DeleteRoomMQ) Consumer() {
 	_, err := r.channel.QueueDeclare(r.queueName, false, false, false, false, nil)
 
 	if err != nil {
-		panic(err)
+		logs.ReLogrusObj(logs.Path).Warn("escGroup consume error-->QueueDeclare :", err)
+		return
 	}
 
 	//2、接收消息
@@ -82,7 +87,8 @@ func (r *DeleteRoomMQ) Consumer() {
 		nil,
 	)
 	if err != nil {
-		panic(err)
+		logs.ReLogrusObj(logs.Path).Warn("escGroup consume error-->Consume:", err)
+		return
 	}
 
 	forever := make(chan bool)
@@ -99,7 +105,7 @@ func (r *DeleteRoomMQ) EscGroup(msg <-chan amqp.Delivery) {
 		err := model.EscRoom(params[0], params[1])
 		// redis.RdbRoomUserList.LRem(redis.Ctx,params[0],)
 		if err != nil {
-			log.Println("deletemq error :", err)
+			logs.ReLogrusObj(logs.Path).Warn("escGroup consume error-->EscRoom:", err)
 		}
 	}
 

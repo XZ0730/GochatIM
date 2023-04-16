@@ -4,7 +4,6 @@ import (
 	"chat/internal/service"
 	"chat/internal/vo"
 	"chat/util"
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -12,8 +11,11 @@ import (
 
 func Login(c *gin.Context) {
 	var service *service.UserService
-	fmt.Println(c.Request.RemoteAddr)
-	fmt.Println(c.Request.URL)
+	// fmt.Println("", c.Request.Host)
+	// id, err := redis.RdbVistorList.Get(redis.Ctx, c.Request.Host).Result()
+	// if err != nil {
+	// 	fmt.Println("", err)
+	// }
 	if err := c.ShouldBind(&service); err == nil {
 		rsp := service.Login()
 		c.JSON(http.StatusOK, rsp)
@@ -36,15 +38,14 @@ func Register(c *gin.Context) {
 }
 func GetUserInfo(c *gin.Context) {
 	var service *service.UserService
-	fmt.Println("---------------------------------")
+	// fmt.Println("---------------------------------")
+	c2, err2 := util.ParseToken(c.GetHeader("token"))
+	if err2 != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"err": err2.Error(),
+		})
+	}
 	if err := c.ShouldBind(&service); err == nil {
-		fmt.Println("---------------------------------1")
-		c2, err2 := util.ParseToken(c.GetHeader("token"))
-		fmt.Println("---------------------------------2")
-		if err2 != nil {
-			fmt.Println("---------------------------------")
-			panic(err2)
-		}
 		rsp := service.GetUserInfo(c2.ID)
 		c.JSON(http.StatusOK, rsp)
 	} else {
